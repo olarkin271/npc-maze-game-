@@ -141,6 +141,8 @@
     
     <div id="game-container">
         <canvas id="maze"></canvas>
+        <button onclick="trainAgent()">Train AI</button>
+<button onclick="runTrainedAgent()">Run AI</button>
         <div id="info">Use Arrow Keys to Move!</div>
         <div id="controls">🟦 You | 🟥 Enemy NPC | 🟩 Goal | 🪙 Coins</div>
         <div id="score">💰 Score: 0</div>
@@ -418,6 +420,74 @@
         
         initGame();
         draw();
+        <!-- === Q-Learning Agent Integration === -->
+<script>
+class QAgent {
+  constructor(alpha=0.1, gamma=0.9, epsilon=0.2) {
+    this.alpha = alpha;
+    this.gamma = gamma;
+    this.epsilon = epsilon;
+    this.q = JSON.parse(localStorage.getItem("qTable") || "{}");
+  }
+  key(s,a){ return `${s.x},${s.y}_${a}`; }
+  getQ(s,a){ return this.q[this.key(s,a)] || 0; }
+  chooseAction(s,actions){
+    if(Math.random()<this.epsilon) return actions[Math.floor(Math.random()*actions.length)];
+    let best=actions[0],bestVal=-Infinity;
+    for(let a of actions){ let v=this.getQ(s,a); if(v>bestVal){best=a;bestVal=v;} }
+    return best;
+  }
+  update(s,a,r,ns,actions){
+    let maxNext=Math.max(...actions.map(a2=>this.getQ(ns,a2)));
+    let old=this.getQ(s,a);
+    this.q[this.key(s,a)]=old+this.alpha*(r+this.gamma*maxNext-old);
+  }
+  save(){ localStorage.setItem("qTable",JSON.stringify(this.q)); }
+}
+
+const ACTIONS=["UP","DOWN","LEFT","RIGHT"];
+const agent=new QAgent();
+
+function envStep(action){
+  // Use your movePlayer logic here:
+  let reward=-1, done=false;
+  movePlayer(action); // existing movement
+  if(player.hitEnemy){ reward=-100; done=true; }
+  else if(player.gotCoin){ reward=+10; player.gotCoin=false; }
+  else if(player.atGoal){ reward=+50; done=true; }
+  return {nextState:{x:player.x,y:player.y},reward,done};
+}
+
+async function trainAgent(episodes=200){
+  for(let ep=0;ep<episodes;ep++){
+    resetGame(); // your existing reset/start
+    let state={x:player.x,y:player.y},done=false;
+    while(!done){
+      let act=agent.chooseAction(state,ACTIONS);
+      let {nextState,reward,done:finished}=envStep(act);
+      agent.update(state,act,reward,nextState,ACTIONS);
+      state=nextState;
+      done=finished;
+      await new Promise(r=>setTimeout(r,5)); // speed of training
+    }
+  }
+  agent.save();
+  alert("Training complete!");
+}
+
+function runTrainedAgent(){
+  agent.epsilon=0;
+  resetGame();
+  let state={x:player.x,y:player.y};
+  function stepLoop(){
+    let act=agent.chooseAction(state,ACTIONS);
+    let {nextState,reward,done}=envStep(act);
+    state=nextState;
+    if(!done) requestAnimationFrame(stepLoop);
+  }
+  stepLoop();
+}
+</script>
     </script>
 </body>
 </html>
